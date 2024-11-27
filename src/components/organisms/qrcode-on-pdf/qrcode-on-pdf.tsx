@@ -207,37 +207,44 @@ export const QrCodeOnPdf = () => {
         <CardHeader>
           <CardTitle>Traitement PDF par lots et Ajout de QR Codes</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>Fichier Excel</Label>
-            <Input
-              type="file"
-              accept=".xlsx,.xls"
-              onChange={handleExcelUpload}
-              disabled={isLoading}
-            />
-          </div>
-          <div>
-            <Button
-              onClick={() => fileInputRef.current?.click()}
-              className="w-full"
-              disabled={isLoading || !excelData || excelData.length === 0}
-            >
-              Sélectionner les PDFs
-            </Button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handlePdfChange}
-              accept=".pdf"
-              className="hidden"
-              multiple
-            />
-            {pdfFiles.length > 0 && (
-              <p className="mt-2 text-sm text-gray-600">
-                {pdfFiles.length} fichier(s) sélectionné(s)
-              </p>
-            )}
+        <CardContent className="space-y-8">
+          <div className="flex flex-col gap-6 justify-center">
+            <div className="space-y-2">
+              <Label>Fichier Excel de recaps</Label>
+              <Input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleExcelUpload}
+                disabled={isLoading}
+              />
+            </div>
+            <div>
+              <div>
+                <Label>Relevés de notes</Label>
+              </div>
+              <div className="flex items-center gap-3">
+                <Button
+                  onClick={() => fileInputRef.current?.click()}
+                  variant={"outline"}
+                  disabled={isLoading || !excelData || excelData.length === 0}
+                >
+                  Sélectionner les PDFs
+                </Button>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handlePdfChange}
+                  accept=".pdf"
+                  className="hidden"
+                  multiple
+                />
+                {pdfFiles.length > 0 && (
+                  <p className="text-xs text-gray-600">
+                    {pdfFiles.length} fichier(s) sélectionné(s)
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
 
           {error && (
@@ -248,11 +255,23 @@ export const QrCodeOnPdf = () => {
           {isLoading && processingProgress > 0 && (
             <div className="w-full bg-gray-200 rounded-full h-2.5">
               <div
-                className="bg-blue-600 h-2.5 rounded-full"
+                className="bg-primary h-2.5 rounded-full"
                 style={{ width: `${processingProgress}%` }}
               ></div>
             </div>
           )}
+
+          <div className="flex items-center justify-center gap-6 my-">
+            {excelData.length > 0 && pdfFiles.length > 0 && (
+              <Button onClick={processAndDownloadAll} disabled={isLoading}>
+                {isLoading
+                  ? "Traitement en cours..."
+                  : "Télécharger tous les PDFs avec QR Codes"}
+              </Button>
+            )}
+
+            <A4PositionPicker value={position} onChange={setPosition} />
+          </div>
         </CardContent>
       </Card>
 
@@ -285,23 +304,7 @@ export const QrCodeOnPdf = () => {
             ))}
           </TableBody>
         </Table>
-
-        {excelData.length > 0 && pdfFiles.length > 0 && (
-          <div className="mt-4">
-            <Button
-              onClick={processAndDownloadAll}
-              disabled={isLoading}
-              className="w-full"
-            >
-              {isLoading
-                ? "Traitement en cours..."
-                : "Télécharger tous les PDFs avec QR Codes"}
-            </Button>
-          </div>
-        )}
       </div>
-
-      <A4PositionPicker value={position} onChange={setPosition} />
     </div>
   );
 };
