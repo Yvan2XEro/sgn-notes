@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -84,7 +85,7 @@ export const QrCodeOnPdf = () => {
 
       setPdfFiles(newPdfFiles);
       setMatriculeStatus(newMatriculeStatus);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Erreur lors de la lecture des PDFs", err);
       setError(`Erreur lors de la lecture des fichiers PDF: ${err.message}`);
     } finally {

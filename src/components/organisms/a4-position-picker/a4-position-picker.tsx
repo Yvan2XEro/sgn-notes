@@ -13,7 +13,7 @@ export const A4PositionPicker = ({
   value: position,
   onChange: setPosition,
 }: IProps) => {
-  const handleDrag = (e: DraggableEvent, data: DraggableData) => {
+  const handleDrag = (_: DraggableEvent, data: DraggableData) => {
     setPosition({ x: data.x, y: data.y });
   };
   return (
