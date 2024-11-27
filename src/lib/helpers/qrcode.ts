@@ -27,18 +27,17 @@ export function getQrCodePayload({
   grade,
 }: QrCodePayload) {
   return `
-Etablissement: ${scholl}\n
-Nom: ${name}\n
-Prénom: ${surname}\n
-Matricule: ${registrationNumber}\n
-Date De Naissance: ${birthDate}\n
-Lieu De Naissance: ${birthPlace}\n
-Niveau: ${level}\n
-Semestre: ${semester}\n
-Moyenne: ${avg}\n
-Grade: ${grade}\n
-Mention: ${appreciation}
-    `;
+Etablissement: ${scholl}
+Nom: ${name}
+Prénom: ${surname}
+Matricule: ${registrationNumber}
+Date De Naissance: ${birthDate}
+Lieu De Naissance: ${birthPlace}
+Niveau: ${level}
+Semestre: ${semester}
+Moyenne: ${avg}
+Grade: ${grade}
+Mention: ${appreciation}`;
 }
 
 export type StudentExcelRecord = {

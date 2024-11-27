@@ -4,29 +4,36 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@/components/ui/table";
 import { generateQrCode, StudentExcelRecord } from "@/lib/helpers/qrcode";
+import JSZip from "jszip";
 import { PDFDocument } from "pdf-lib";
-import { useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import pdfToText from "react-pdftotext";
 import { useLocalStorage } from "usehooks-ts";
 import * as XLSX from "xlsx";
 import { A4PositionPicker } from "../a4-position-picker";
 
+interface PdfInfo {
+  file: File;
+  text: string;
+}
+
 export const QrCodeOnPdf = () => {
-  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [pdfFiles, setPdfFiles] = useState<PdfInfo[]>([]);
   const [excelData, setExcelData] = useState<StudentExcelRecord[]>([]);
   const [matriculeStatus, setMatriculeStatus] = useState<
-    Record<string, boolean>
+    Record<string, { found: boolean; fileName?: string }>
   >({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [processingProgress, setProcessingProgress] = useState<number>(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [position, setPosition] = useLocalStorage("qrcode-position", {
@@ -37,29 +44,51 @@ export const QrCodeOnPdf = () => {
   const handlePdfChange = async (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
-    const file = event.target.files?.[0];
-    if (file && file.type === "application/pdf") {
-      setPdfFile(file);
-      setError(null);
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0) return;
 
-      try {
+    setIsLoading(true);
+    setError(null);
+    const newPdfFiles: PdfInfo[] = [];
+    const newMatriculeStatus: Record<
+      string,
+      { found: boolean; fileName?: string }
+    > = {};
+
+    try {
+      for (const file of files) {
+        if (file.type !== "application/pdf") {
+          throw new Error(`Le fichier ${file.name} n'est pas un PDF valide`);
+        }
+
         const text = await pdfToText(file);
-        const updatedStatus: Record<string, boolean> = {};
+        newPdfFiles.push({ file, text });
 
         excelData.forEach((student) => {
-          updatedStatus[student.MATRICULE] = text
-            .toLowerCase()
-            .includes(student.MATRICULE.toLowerCase());
+          if (text.toLowerCase().includes(student.MATRICULE.toLowerCase())) {
+            newMatriculeStatus[student.MATRICULE] = {
+              found: true,
+              fileName: file.name,
+            };
+          }
         });
-
-        setMatriculeStatus(updatedStatus);
-      } catch (err) {
-        console.error("Erreur lors de la lecture du PDF", err);
-        setError("Erreur lors de la lecture du fichier PDF");
       }
-    } else {
-      setError("Veuillez sélectionner un fichier PDF valide");
-      setPdfFile(null);
+
+      excelData.forEach((student) => {
+        if (!newMatriculeStatus[student.MATRICULE]) {
+          newMatriculeStatus[student.MATRICULE] = {
+            found: false,
+          };
+        }
+      });
+
+      setPdfFiles(newPdfFiles);
+      setMatriculeStatus(newMatriculeStatus);
+    } catch (err) {
+      console.error("Erreur lors de la lecture des PDFs", err);
+      setError(`Erreur lors de la lecture des fichiers PDF: ${err.message}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -109,41 +138,65 @@ export const QrCodeOnPdf = () => {
     }
   };
 
-  const addQRCodeAndDownload = async (student: StudentExcelRecord) => {
-    if (!pdfFile) return;
+  const processAndDownloadAll = async () => {
+    if (pdfFiles.length === 0) return;
 
     try {
       setIsLoading(true);
-      const qrCodeImage = await generateQrCode(student);
+      const zip = new JSZip();
+      let processedCount = 0;
 
-      const arrayBuffer = await pdfFile.arrayBuffer();
-      const pdfDoc = await PDFDocument.load(arrayBuffer);
+      for (const student of excelData) {
+        const status = matriculeStatus[student.MATRICULE];
+        if (!status?.found) continue;
 
-      const [firstPage] = pdfDoc.getPages();
-      const qrCodeImageEmbed = await pdfDoc.embedPng(qrCodeImage);
+        const pdfFile = pdfFiles.find((pdf) =>
+          pdf.text.toLowerCase().includes(student.MATRICULE.toLowerCase())
+        );
 
-      firstPage.drawImage(qrCodeImageEmbed, {
-        x: position.x,
-        y: firstPage.getHeight() - position.y - 100,
-        width: 100,
-        height: 100,
-      });
+        if (!pdfFile) continue;
 
-      const modifiedPdfBytes = await pdfDoc.save();
+        try {
+          const qrCodeImage = await generateQrCode(student);
+          const arrayBuffer = await pdfFile.file.arrayBuffer();
+          const pdfDoc = await PDFDocument.load(arrayBuffer);
 
-      const blob = new Blob([modifiedPdfBytes], { type: "application/pdf" });
-      const url = window.URL.createObjectURL(blob);
+          const [firstPage] = pdfDoc.getPages();
+          const qrCodeImageEmbed = await pdfDoc.embedPng(qrCodeImage);
+
+          firstPage.drawImage(qrCodeImageEmbed, {
+            x: position.x * 0.75,
+            y: firstPage.getHeight() - position.y * 0.75 - 100,
+            width: 100,
+            height: 100,
+          });
+
+          const modifiedPdfBytes = await pdfDoc.save();
+          zip.file(`${student.MATRICULE}_QRCode.pdf`, modifiedPdfBytes);
+
+          processedCount++;
+          setProcessingProgress((processedCount / excelData.length) * 100);
+        } catch (err) {
+          console.error(
+            `Erreur lors du traitement du PDF pour ${student.MATRICULE}`,
+            err
+          );
+        }
+      }
+
+      const zipContent = await zip.generateAsync({ type: "blob" });
+      const url = window.URL.createObjectURL(zipContent);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${student.MATRICULE}_QRCode.pdf`;
+      link.download = "documents_with_qrcodes.zip";
       link.click();
       window.URL.revokeObjectURL(url);
-
-      setIsLoading(false);
     } catch (err) {
-      console.error("Erreur lors de la modification du PDF", err);
-      setError("Erreur lors de la modification du PDF");
+      console.error("Erreur lors de la création du ZIP", err);
+      setError("Erreur lors de la création du fichier ZIP");
+    } finally {
       setIsLoading(false);
+      setProcessingProgress(0);
     }
   };
 
@@ -151,15 +204,25 @@ export const QrCodeOnPdf = () => {
     <div>
       <Card>
         <CardHeader>
-          <CardTitle>Recherche PDF et Ajout de QR Code</CardTitle>
+          <CardTitle>Traitement PDF par lots et Ajout de QR Codes</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Fichier Excel</Label>
+            <Input
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleExcelUpload}
+              disabled={isLoading}
+            />
+          </div>
           <div>
             <Button
               onClick={() => fileInputRef.current?.click()}
               className="w-full"
+              disabled={isLoading || !excelData || excelData.length === 0}
             >
-              Sélectionner un PDF
+              Sélectionner les PDFs
             </Button>
             <input
               type="file"
@@ -167,25 +230,27 @@ export const QrCodeOnPdf = () => {
               onChange={handlePdfChange}
               accept=".pdf"
               className="hidden"
+              multiple
             />
-            {pdfFile && (
+            {pdfFiles.length > 0 && (
               <p className="mt-2 text-sm text-gray-600">
-                Fichier sélectionné: {pdfFile.name}
+                {pdfFiles.length} fichier(s) sélectionné(s)
               </p>
             )}
           </div>
-          <div className="space-y-2">
-            <Label>Fichier Excel</Label>
-            <Input
-              type="file"
-              accept=".xlsx,.xls"
-              onChange={handleExcelUpload}
-            />
-          </div>
+
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
+          )}
+          {isLoading && processingProgress > 0 && (
+            <div className="w-full bg-gray-200 rounded-full h-2.5">
+              <div
+                className="bg-blue-600 h-2.5 rounded-full"
+                style={{ width: `${processingProgress}%` }}
+              ></div>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -196,7 +261,7 @@ export const QrCodeOnPdf = () => {
             <TableRow>
               <TableHead>Nom</TableHead>
               <TableHead>Matricule</TableHead>
-              <TableHead>Télécharger</TableHead>
+              <TableHead>Statut</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -207,21 +272,32 @@ export const QrCodeOnPdf = () => {
                 </TableCell>
                 <TableCell>{student.MATRICULE}</TableCell>
                 <TableCell>
-                  <Button
-                    onClick={() => addQRCodeAndDownload(student)}
-                    disabled={!matriculeStatus[student.MATRICULE] || isLoading}
-                    className="w-full"
-                    size={"sm"}
-                  >
-                    {matriculeStatus[student.MATRICULE]
-                      ? "Télécharger avec QR Code"
-                      : "Non trouvé"}
-                  </Button>
+                  {matriculeStatus[student.MATRICULE]?.found ? (
+                    <span className="text-green-600">
+                      Trouvé dans: {matriculeStatus[student.MATRICULE].fileName}
+                    </span>
+                  ) : (
+                    <span className="text-red-600">Non trouvé</span>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
+
+        {excelData.length > 0 && pdfFiles.length > 0 && (
+          <div className="mt-4">
+            <Button
+              onClick={processAndDownloadAll}
+              disabled={isLoading}
+              className="w-full"
+            >
+              {isLoading
+                ? "Traitement en cours..."
+                : "Télécharger tous les PDFs avec QR Codes"}
+            </Button>
+          </div>
+        )}
       </div>
 
       <A4PositionPicker value={position} onChange={setPosition} />
